@@ -200,11 +200,7 @@ For files at CONTAINER paths (e.g. /mnt/user-data/): use the upload_from_sandbox
     }
 
     const form = new FormData();
-    form.append(
-      "file",
-      new Blob([fileBytes], { type: fileMime }),
-      fileName,
-    );
+    form.append("file", new Blob([fileBytes], { type: fileMime }), fileName);
 
     const res = await fetch(`${GATEWAY_URL}/${fileName}`, {
       method: "PUT",
