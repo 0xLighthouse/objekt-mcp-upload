@@ -120,7 +120,8 @@ For files at CONTAINER paths (e.g. /mnt/user-data/): use the upload_from_sandbox
       };
     }
 
-    let dataURL: string;
+    let fileBytes: Uint8Array;
+    let fileMime: string;
     let fileName: string;
 
     if (filePath) {
@@ -152,11 +153,10 @@ For files at CONTAINER paths (e.g. /mnt/user-data/): use the upload_from_sandbox
         };
       }
 
-      const bytes = await readFile(absPath);
-      const mime = mimeFromPath(absPath);
+      const buffer = await readFile(absPath);
+      fileBytes = new Uint8Array(buffer);
+      fileMime = mimeFromPath(absPath);
       fileName = customName ?? basename(absPath);
-      const b64 = bytes.toString("base64");
-      dataURL = `data:${mime};base64,${b64}`;
     } else if (content && content_type) {
       if (content.length > MAX_CONTENT_BYTES) {
         return {
@@ -181,11 +181,11 @@ For files at CONTAINER paths (e.g. /mnt/user-data/): use the upload_from_sandbox
         };
       }
       fileName = customName;
+      fileMime = content_type;
       if (encoding === "raw") {
-        const b64 = Buffer.from(content).toString("base64");
-        dataURL = `data:${content_type};base64,${b64}`;
+        fileBytes = new Uint8Array(Buffer.from(content));
       } else {
-        dataURL = `data:${content_type};base64,${content}`;
+        fileBytes = new Uint8Array(Buffer.from(content, "base64"));
       }
     } else {
       return {
@@ -199,13 +199,17 @@ For files at CONTAINER paths (e.g. /mnt/user-data/): use the upload_from_sandbox
       };
     }
 
+    const form = new FormData();
+    form.append(
+      "file",
+      new Blob([fileBytes], { type: fileMime }),
+      fileName,
+    );
+
     const res = await fetch(`${GATEWAY_URL}/${fileName}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({ dataURL }),
+      headers: { Authorization: `Bearer ${API_KEY}` },
+      body: form,
     });
 
     if (!res.ok) {
@@ -288,7 +292,7 @@ server.registerTool(
     const fileName = customName ?? basename(sandbox_path);
     const mime = mimeFromPath(sandbox_path);
 
-    const cmd = `curl -s -X PUT "${GATEWAY_URL}/${fileName}" \\\n  -H "Content-Type: application/json" \\\n  -H "Authorization: Bearer ${API_KEY}" \\\n  -d "{\\"dataURL\\":\\"data:${mime};base64,$(base64 -w0 "${sandbox_path}" 2>/dev/null || base64 -i "${sandbox_path}")\\"}"`;
+    const cmd = `curl -s -X PUT "${GATEWAY_URL}/${fileName}" \\\n  -H "Authorization: Bearer ${API_KEY}" \\\n  -F "file=@${sandbox_path};type=${mime}"`;
 
     return {
       content: [
