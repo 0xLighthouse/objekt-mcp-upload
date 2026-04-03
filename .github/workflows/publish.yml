@@ -13,16 +13,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-
-      - name: Update npm (required for Trusted Publishing)
-        run: npm install -g npm@latest
+          node-version: 22.17.1
 
       - name: Download release tarball
         run: gh release download "${{ github.event.release.tag_name }}" --pattern "*.tgz"
