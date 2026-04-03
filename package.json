@@ -1,6 +1,6 @@
 {
   "name": "@objekt.sh/mcp-upload",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "mcpName": "sh.objekt/mcp-upload",
   "description": "MCP server for uploading files to objekt.sh from Claude Desktop, Cursor, and other MCP clients.",
   "repository": {

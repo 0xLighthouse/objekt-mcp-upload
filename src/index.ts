@@ -35,7 +35,7 @@ function mimeFromPath(filePath: string): string {
 const MAX_CONTENT_BYTES = 500 * 1024; // 500KB limit for inline content (saves tokens)
 
 const server = new McpServer(
-  { name: "Objekt.sh", version: "0.1.3" },
+  { name: "Objekt.sh", version: "0.1.4" },
   {
     instructions: [
       "Objekt.sh uploads files to decentralised storage (CDN, IPFS, Arweave).",
@@ -468,7 +468,7 @@ server.registerTool(
       });
       checks.latencyMs = Date.now() - start;
       checks.egress = res.ok ? "ok" : `http_${res.status}`;
-    } catch (err) {
+    } catch {
       checks.latencyMs = Date.now() - start;
       checks.egress = "blocked";
     }
