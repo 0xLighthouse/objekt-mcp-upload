@@ -33,7 +33,7 @@ function mimeFromPath(filePath: string): string {
 }
 
 const MAX_CONTENT_BYTES = 500 * 1024; // 500KB limit for inline content (saves tokens)
-const VERSION = "0.1.4";
+const VERSION = "0.1.5";
 
 const server = new McpServer(
   { name: "Objekt.sh", version: VERSION },
