@@ -33,9 +33,10 @@ function mimeFromPath(filePath: string): string {
 }
 
 const MAX_CONTENT_BYTES = 500 * 1024; // 500KB limit for inline content (saves tokens)
+const VERSION = "0.1.4";
 
 const server = new McpServer(
-  { name: "Objekt.sh", version: "0.1.4" },
+  { name: "Objekt.sh", version: VERSION },
   {
     instructions: [
       "Objekt.sh uploads files to decentralised storage (CDN, IPFS, Arweave).",
@@ -506,6 +507,30 @@ server.registerTool(
       ],
     };
   },
+);
+
+// ─── get_version ───────────────────────────────────────────────────────────
+
+server.registerTool(
+  "get_version",
+  {
+    title: "Get Version",
+    description: "Returns the installed version of the Objekt.sh MCP server.",
+    inputSchema: z.object({}),
+    annotations: {
+      title: "Get Version",
+      readOnlyHint: true,
+      openWorldHint: false,
+    },
+  },
+  async () => ({
+    content: [
+      {
+        type: "text" as const,
+        text: `objekt.sh/mcp-upload v${VERSION}`,
+      },
+    ],
+  }),
 );
 
 // ─── Start ──────────────────────────────────────────────────────────────────
