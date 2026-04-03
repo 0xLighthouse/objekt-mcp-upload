@@ -35,7 +35,7 @@ function mimeFromPath(filePath: string): string {
 const MAX_CONTENT_BYTES = 500 * 1024; // 500KB limit for inline content (saves tokens)
 
 const server = new McpServer(
-  { name: "Objekt.sh", version: "0.1.0" },
+  { name: "Objekt.sh", version: "0.1.3" },
   {
     instructions: [
       "Objekt.sh uploads files to decentralised storage (CDN, IPFS, Arweave).",
@@ -158,7 +158,7 @@ For files at CONTAINER paths (e.g. /mnt/user-data/): use the upload_from_sandbox
       fileMime = mimeFromPath(absPath);
       fileName = customName ?? basename(absPath);
     } else if (content && content_type) {
-      if (content.length > MAX_CONTENT_BYTES) {
+      if (Buffer.byteLength(content) > MAX_CONTENT_BYTES) {
         return {
           content: [
             {
@@ -252,7 +252,7 @@ server.registerTool(
   {
     title: "Upload from Sandbox",
     description:
-      "Upload a file from a sandbox environment (e.g. Claude Desktop VM, claude.ai container). Returns a bash command to run in the sandbox shell. Use this when the file is at a sandbox path like /mnt/user-data/ that the host cannot access.",
+      "Upload a file from a sandbox/container path (e.g. /mnt/user-data/, /home/claude/) that the host cannot access. Reads the file and uploads it directly — single tool call, no shell commands needed.",
     inputSchema: z.object({
       sandbox_path: z
         .string()
@@ -268,8 +268,8 @@ server.registerTool(
     }),
     annotations: {
       title: "Upload from Sandbox",
-      readOnlyHint: true,
-      openWorldHint: false,
+      readOnlyHint: false,
+      openWorldHint: true,
     },
   },
   async ({ sandbox_path, name: customName }) => {
@@ -286,15 +286,64 @@ server.registerTool(
     }
 
     const fileName = customName ?? basename(sandbox_path);
-    const mime = mimeFromPath(sandbox_path);
+    const fileMime = mimeFromPath(sandbox_path);
 
-    const cmd = `curl -s -X PUT "${GATEWAY_URL}/${fileName}" \\\n  -H "Authorization: Bearer ${API_KEY}" \\\n  -F "file=@${sandbox_path};type=${mime}"`;
+    let fileBytes: Uint8Array;
+    try {
+      const buffer = await readFile(sandbox_path);
+      fileBytes = new Uint8Array(buffer);
+    } catch {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `File not found or not readable: ${sandbox_path}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    const form = new FormData();
+    form.append("file", new Blob([fileBytes], { type: fileMime }), fileName);
+
+    const res = await fetch(`${GATEWAY_URL}/${fileName}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${API_KEY}` },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Upload failed (${res.status}): ${text}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    const data = (await res.json()) as {
+      name: string;
+      kind: string;
+      bytes: number;
+      permalink: string;
+    };
 
     return {
       content: [
         {
+          type: "resource_link" as const,
+          uri: data.permalink,
+          name: data.name,
+          mimeType: data.kind,
+        },
+        {
           type: "text" as const,
-          text: `Run this command in your shell to upload the file:\n\n${cmd}\n\nThis reads the file from the container filesystem and uploads it directly to objekt.sh.`,
+          text: `Uploaded ${data.name} (${data.kind}, ${data.bytes} bytes)\n${data.permalink}`,
         },
       ],
     };
@@ -385,6 +434,76 @@ server.registerTool(
     const data = await res.json();
     return {
       content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+    };
+  },
+);
+
+// ─── check_connection ──────────────────────────────────────────────────────
+
+server.registerTool(
+  "check_connection",
+  {
+    title: "Check Connection",
+    description:
+      "Test connectivity to api.objekt.sh. Use this to diagnose sandbox egress issues. If it fails, the user needs to add api.objekt.sh to their domain allowlist (Settings → Capabilities → Domain Allowlist).",
+    inputSchema: z.object({}),
+    annotations: {
+      title: "Check Connection",
+      readOnlyHint: true,
+      openWorldHint: true,
+    },
+  },
+  async () => {
+    const checks = {
+      gateway: GATEWAY_URL,
+      apiKey: API_KEY ? "set" : "missing",
+      egress: "unknown" as string,
+      latencyMs: 0,
+    };
+
+    const start = Date.now();
+    try {
+      const res = await fetch(`${GATEWAY_URL}/pricing`, {
+        signal: AbortSignal.timeout(10_000),
+      });
+      checks.latencyMs = Date.now() - start;
+      checks.egress = res.ok ? "ok" : `http_${res.status}`;
+    } catch (err) {
+      checks.latencyMs = Date.now() - start;
+      checks.egress = "blocked";
+    }
+
+    if (checks.egress === "blocked") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Cannot reach ${GATEWAY_URL}\n\nThis usually means network egress is blocked. To fix:\n1. Go to Settings → Capabilities\n2. Enable "Allow network egress"\n3. Under Domain Allowlist, add: api.objekt.sh\n\nAPI key: ${checks.apiKey}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    if (checks.apiKey === "missing") {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Egress: ${checks.egress} (${checks.latencyMs}ms)\nAPI key: missing — set OBJEKT_API_KEY in your MCP server config. Get a key at objekt.sh/mcp`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Egress: ${checks.egress} (${checks.latencyMs}ms)\nGateway: ${checks.gateway}\nAPI key: ${checks.apiKey}`,
+        },
+      ],
     };
   },
 );
